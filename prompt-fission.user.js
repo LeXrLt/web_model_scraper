@@ -5,12 +5,12 @@
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       You
 // @match        https://chat.deepseek.com/*
-// @match        http://192.168.2.155:8082/*
+// @match        http://127.0.0.1:8082/*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @connect      192.168.2.155
+// @connect      127.0.0.1
 // ==/UserScript==
 
 (function() {
