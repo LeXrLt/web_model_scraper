@@ -3,23 +3,23 @@
 // @namespace    http://tampermonkey.net/
 // @version      0.3
 // @description  Enhances chat interfaces with prompt fission capabilities.
-// @author       You
+// @author       lele
 // @match        https://chat.deepseek.com/*
-// @match        http://127.0.0.1:8082/*
+// @match        https://prompt.zheshi.tech/*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @connect      127.0.0.1
+// @connect      prompt.zheshi.tech
 // ==/UserScript==
 
 (function () {
     'use strict';
 
     // --- CONFIGURATION ---
-    const API_BASE_URL = 'http://127.0.0.1:8081/api/v1';
-    const LOGIN_URL = 'http://127.0.0.1:8082';
-    const TOKEN_SYNC_URL = 'http://127.0.0.1:8082';
+    const API_BASE_URL = 'https://prompt.zheshi.tech/api/v1';
+    const LOGIN_URL = 'https://prompt.zheshi.tech';
+    const TOKEN_SYNC_URL = 'https://prompt.zheshi.tech';
 
     // --- 1. CREATE UI ELEMENTS ---
     const button = document.createElement('div');
