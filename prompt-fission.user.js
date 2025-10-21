@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.4
+// @version      0.5
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
@@ -182,7 +182,7 @@
 
     loginButtonEl.addEventListener('click', () => {
         if (loginButtonEl.textContent === 'Logout') { GM_setValue('authToken', null); updateLoginUI(false); }
-        else { window.location.href = LOGIN_URL; }
+        else { window.open(LOGIN_URL, '_blank'); }
     });
 
     function executePromptOnPage() {
