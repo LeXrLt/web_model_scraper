@@ -30,6 +30,7 @@
     const dialog = document.createElement('div');
     dialog.id = 'fission-dialog';
     dialog.innerHTML = `
+        <div id="fission-dialog-header">Prompt Fission</div>
         <div id="fission-dialog-content">
             <div id="fission-status-container">
                 <span id="fission-login-status">Verifying...</span>
@@ -50,8 +51,9 @@
     // --- 2. STYLE UI ELEMENTS ---
     GM_addStyle(`
         #fission-button { position: fixed; top: 50%; right: 20px; width: 50px; height: 50px; background-color: #007bff; color: white; border-radius: 50%; display: flex; justify-content: center; align-items: center; cursor: grab; user-select: none; z-index: 9999; transition: right 0.3s ease-in-out; }
-        #fission-dialog { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 350px; background-color: white; border: 1px solid #ccc; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 10000; padding: 20px; font-family: sans-serif; }
-        #fission-dialog-content { display: flex; flex-direction: column; gap: 15px; }
+        #fission-dialog { display: none; position: fixed; top: 150px; left: 150px; width: 350px; background-color: white; border: 1px solid #ccc; border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.1); z-index: 10000; font-family: sans-serif; }
+        #fission-dialog-header { padding: 10px; cursor: move; background-color: #f1f1f1; border-bottom: 1px solid #ccc; border-top-left-radius: 10px; border-top-right-radius: 10px; }
+        #fission-dialog-content { padding: 20px; display: flex; flex-direction: column; gap: 15px; }
         #fission-status-container { display: flex; justify-content: space-between; align-items: center; }
         #fission-login-button, #fission-start-button { padding: 5px 10px; cursor: pointer; }
         #fission-prompt-container { display: flex; gap: 10px; }
@@ -62,6 +64,45 @@
 
 
     // --- 3. IMPLEMENT UI LOGIC ---
+    function makeDraggable(element, handle) {
+        let pos1 = 0, pos2 = 0, pos3 = 0, pos4 = 0;
+        handle.onmousedown = dragMouseDown;
+
+        function dragMouseDown(e) {
+            e.preventDefault();
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            document.onmouseup = closeDragElement;
+            document.onmousemove = elementDrag;
+        }
+
+        function elementDrag(e) {
+            e.preventDefault();
+            pos1 = pos3 - e.clientX;
+            pos2 = pos4 - e.clientY;
+            pos3 = e.clientX;
+            pos4 = e.clientY;
+            element.style.top = (element.offsetTop - pos2) + "px";
+            element.style.left = (element.offsetLeft - pos1) + "px";
+        }
+
+        function closeDragElement() {
+            document.onmouseup = null;
+            document.onmousemove = null;
+            GM_setValue('dialogTop', element.style.top);
+            GM_setValue('dialogLeft', element.style.left);
+        }
+    }
+
+    const savedTop = GM_getValue('dialogTop', null);
+    const savedLeft = GM_getValue('dialogLeft', null);
+    if (savedTop && savedLeft) {
+        dialog.style.top = savedTop;
+        dialog.style.left = savedLeft;
+    }
+
+    makeDraggable(dialog, dialog.querySelector('#fission-dialog-header'));
+
     function toggleDialog() { dialog.style.display = (dialog.style.display === 'none' || dialog.style.display === '') ? 'block' : 'none'; }
     button.addEventListener('mousedown', (e) => {
         e.preventDefault();
