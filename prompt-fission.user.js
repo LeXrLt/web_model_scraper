@@ -120,10 +120,63 @@
             url: `${API_BASE_URL}/profile`,
             headers: { 'Authorization': `Bearer ${token}` },
             onload: (response) => {
-                if (response.status === 200) updateLoginUI(true);
+                if (response.status === 200) {
+                    updateLoginUI(true);
+                    queryPendingTasks().then(tasks => {
+                        // if (tasks && tasks.length > 0) {
+                            console.log(`[Tampermonkey] 📝 You have ${tasks.length} pending tasks.`);
+                            confirmAction(`You have ${tasks.length} pending tasks. Do you want to process them now?`).then(confirmed => {
+                                if (confirmed) {
+                                    const textareaElement = document.querySelector('textarea[class*="ds-scroll-area"][class*="d96f2d2a"]');
+                                    // const prompts = tasks.map(task => ({ sub_task_id: task.id, prompt: task.prompt }));
+                                    processPromptsFlow(textareaElement, tasks);
+                                }
+                            });
+                        // }
+                    }).catch(err => {
+                        console.error('[Tampermonkey] ❌ Failed to query pending tasks:', err);
+                    });
+                }
                 else { GM_setValue('authToken', null); updateLoginUI(false); }
             },
             onerror: () => { GM_setValue('authToken', null); updateLoginUI(false, 'Error'); }
+        });
+    }
+
+    // 查询待处理任务接口
+    function queryPendingTasks() {
+        return new Promise((resolve, reject) => {
+            const token = GM_getValue('authToken', null);
+            if (!token || loginButtonEl.textContent !== 'Logout') {
+                console.warn('[Tampermonkey] ❌ 未登录，无法查询待处理任务');
+                return reject('Not logged in');
+            }
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: `${API_BASE_URL}/pending-tasks`,
+                headers: { 'Authorization': `Bearer ${token}` },
+                onload: (response) => {
+                    try {
+                        const data = JSON.parse(response.responseText);
+                        resolve(data);
+                    } catch (e) {
+                        console.error('[Tampermonkey] ❌ Failed to parse response:', e);
+                        reject(e);
+                    }
+                },
+                onerror: (error) => {
+                    console.error('[Tampermonkey] ❌ Error:', error);
+                    reject(error);
+                }
+            });
+        });
+    }
+
+    // 弹窗询问确认操作
+    function confirmAction(message) {
+        return new Promise((resolve) => {
+            const confirmation = window.confirm(message);
+            resolve(confirmation);
         });
     }
 
@@ -190,6 +243,7 @@
     }
 
     startButtonEl.addEventListener('click', () => {
+        progressBarEl.style.width = '0%';
         const token = GM_getValue('authToken', null);
         if (!token || loginButtonEl.textContent !== 'Logout') return alert('Please log in first.');
         const prompt = promptInputEl.value;
@@ -203,10 +257,11 @@
             onload: (response) => {
                 // progressBarEl.style.width = '100%';
                 try {
-                    const data = JSON.parse(response.responseText);
-                    if (data.prompts && data.prompts.length > 0) {
+                    const prompts = JSON.parse(response.responseText);
+                    // console.log('[Tampermonkey] 📥 Received response:', data);
+                    if (prompts && prompts.length > 0) {
                         const textareaElement = document.querySelector('textarea[class*="ds-scroll-area"][class*="d96f2d2a"]');
-                        processPromptsFlow(textareaElement, data.prompts);
+                        processPromptsFlow(textareaElement, prompts);
                     } else {
                         alert('No prompts were returned.');
                     }
@@ -231,6 +286,7 @@
  * @param {string[]} prompts - 要处理的 prompt 字符串数组。
  */
     async function processPromptsFlow(textareaElement, prompts) {
+        progressBarEl.style.width = '0%';
         // 确保 prompts 是一个数组，并且有内容
         if (!Array.isArray(prompts) || prompts.length === 0) {
             console.log("[Tampermonkey] ⚠️ No prompts provided or prompts is not an array.");
@@ -241,9 +297,10 @@
 
         // 使用 for...of 循环按顺序处理每个 prompt
         for (let i = 0; i < prompts.length; i++) {
-            const prompt = prompts[i];
+            const prompt = prompts[i].prompt;
+            const subTaskId = prompts[i].sub_task_id;
             try {
-                console.log(`[Tampermonkey] ⏳ Processing prompt: "${prompt.substring(0, 50)}..."`); // 打印前50个字符
+                console.log(`[Tampermonkey] ⏳ Processing prompt: "${prompt.substring(0, 10)}..."`);
 
                 // 1. 模拟输入/粘贴 prompt
                 await simulateInputAtCursor(textareaElement, prompt);
@@ -254,7 +311,7 @@
                 console.log(`[Tampermonkey] ✅ Prompt executed successfully.`);
 
                 // 3. 上传蒸馏数据
-                await uploadDistillationData(prompt);
+                await uploadDistillationData(prompt, subTaskId);
                 console.log(`[Tampermonkey] ✅ Distillation data uploaded successfully.`);
 
                 // 4. 更新进度条（如果有的话）
@@ -264,7 +321,7 @@
 
             } catch (error) {
                 // 如果一个 prompt 失败，记录错误并继续处理下一个 prompt (或选择中断)
-                console.error(`[Tampermonkey] ❌ Failed to process prompt: "${prompt.substring(0, 50)}..."`, error);
+                console.error(`[Tampermonkey] ❌ Failed to process prompt: "${prompt.substring(0, 10)}..."`, error);
                 // 如果希望失败时停止整个流程，可以在这里加上 `throw error;` 或 `return;`
             }
         }
@@ -272,7 +329,7 @@
         console.log("[Tampermonkey] 🎉 All prompts processed successfully (or finished execution).");
     }
 
-    function uploadDistillationData(prompt) {
+    function uploadDistillationData(prompt, subTaskId) {
         return new Promise((resolve, reject) => {
             const token = GM_getValue('authToken', null);
             if (!token || loginButtonEl.textContent !== 'Logout') {
@@ -289,13 +346,13 @@
             const thinkingData = thinkingContent.innerText;
             const outputContent = outputContents[outputContents.length - 1];
             const outputData = outputContent.innerText;
-            // console.log('[Tampermonkey] 📤 上传蒸馏数据:', outputData);
-            // resolve();
+            const jsonData = JSON.stringify({ sub_task_id: subTaskId, prompt: prompt, inference_process: thinkingData, model_output: outputData });
+            // console.log('[Tampermonkey] 📤 上传蒸馏数据:', jsonData);
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: `${API_BASE_URL}/distillation-data`,
                 headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                data: JSON.stringify({ prompt, inference_process: thinkingData, model_output: outputData }),
+                data: jsonData,
                 onload: (response) => {
                     try {
                         const data = JSON.parse(response.responseText);
@@ -313,19 +370,6 @@
                 }
             });
         });
-    }
-
-
-    // --- 5. INITIALIZE SCRIPT ---
-    const currentUrl = window.current_url_for_testing || window.location.href;
-    if (currentUrl.startsWith(TOKEN_SYNC_URL)) {
-        const token = localStorage.getItem('token');
-        if (token) {
-            GM_setValue('authToken', token);
-            checkLoginStatus();
-        }
-    } else {
-        checkLoginStatus();
     }
 
     // 模拟执行粘贴，尝试所有的可能方式，每0.5秒钟检查一次是否有可输入的焦点元素，持续5s
@@ -405,5 +449,16 @@
         });
     }
 
+    // --- 5. INITIALIZE SCRIPT ---
+    const currentUrl = window.current_url_for_testing || window.location.href;
+    if (currentUrl.startsWith(TOKEN_SYNC_URL)) {
+        const token = localStorage.getItem('token');
+        if (token) {
+            GM_setValue('authToken', token);
+            checkLoginStatus();
+        }
+    } else {
+        checkLoginStatus();
+    }
 
 })();
