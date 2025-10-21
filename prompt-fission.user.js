@@ -274,7 +274,7 @@
                         // 发送完成，解决 Promise
                         resolve();
                     }
-                }, 2000);
+                }, 6000);
             } else {
                 console.warn('[Tampermonkey] ❌ 未找到发送按钮');
                 // 找不到发送按钮，拒绝 Promise
@@ -351,8 +351,6 @@
                 await executePromptOnPagePromise();
                 console.log(`[Tampermonkey] ✅ Prompt executed successfully.`);
 
-                // 至少等待10秒，确保页面有足够时间生成响应
-                await new Promise(resolve => setTimeout(resolve, 10000));
                 // 3. 上传蒸馏数据
                 await uploadDistillationData(prompt, subTaskId);
                 console.log(`[Tampermonkey] ✅ Distillation data uploaded successfully.`);
