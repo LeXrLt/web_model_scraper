@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.3
+// @version      0.4
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
