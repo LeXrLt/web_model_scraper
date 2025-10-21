@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.6
+// @version      0.7
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
@@ -381,6 +381,7 @@
             const outputContents = document.querySelectorAll('div[class*="ds-markdown"]');
             if (thinkingContents.length === 0 || outputContents.length === 0) {
                 console.warn('[Tampermonkey] ❌ 未找到蒸馏内容区域');
+                alert('未找到推理过程，请打开【深度思考】后再试。');
                 reject('Thinking content area not found');
             }
             const thinkingContent = thinkingContents[thinkingContents.length - 1];
