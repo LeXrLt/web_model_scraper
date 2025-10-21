@@ -123,7 +123,7 @@
                 if (response.status === 200) {
                     updateLoginUI(true);
                     queryPendingTasks().then(tasks => {
-                        // if (tasks && tasks.length > 0) {
+                        if (tasks && tasks.length > 0) {
                             console.log(`[Tampermonkey] 📝 You have ${tasks.length} pending tasks.`);
                             confirmAction(`You have ${tasks.length} pending tasks. Do you want to process them now?`).then(confirmed => {
                                 if (confirmed) {
@@ -132,7 +132,7 @@
                                     processPromptsFlow(textareaElement, tasks);
                                 }
                             });
-                        // }
+                        }
                     }).catch(err => {
                         console.error('[Tampermonkey] ❌ Failed to query pending tasks:', err);
                     });
@@ -310,6 +310,8 @@
                 await executePromptOnPagePromise();
                 console.log(`[Tampermonkey] ✅ Prompt executed successfully.`);
 
+                // 至少等待10秒，确保页面有足够时间生成响应
+                await new Promise(resolve => setTimeout(resolve, 10000));
                 // 3. 上传蒸馏数据
                 await uploadDistillationData(prompt, subTaskId);
                 console.log(`[Tampermonkey] ✅ Distillation data uploaded successfully.`);
