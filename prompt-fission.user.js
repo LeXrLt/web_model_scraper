@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.7
+// @version      0.8
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
@@ -364,6 +364,8 @@
                 // 如果一个 prompt 失败，记录错误并继续处理下一个 prompt (或选择中断)
                 console.error(`[Tampermonkey] ❌ Failed to process prompt: "${prompt.substring(0, 10)}..."`, error);
                 // 如果希望失败时停止整个流程，可以在这里加上 `throw error;` 或 `return;`
+                alert(`Failed to process prompt: "${prompt.substring(0, 10)}..." Error: ${error.message}`);
+                throw error; // 取消注释以在失败时停止整个流程
             }
         }
 
