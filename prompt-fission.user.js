@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.9
+// @version      0.9.1
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
@@ -155,6 +155,11 @@
         loginButtonEl.textContent = isLoggedIn ? 'Logout' : 'Login';
     }
 
+    function updateStartButtonUI(isProcessing) {
+        startButtonEl.textContent = isProcessing ? 'Processing...' : 'Start';
+        startButtonEl.disabled = isProcessing;
+    }
+
     function checkLoginStatus() {
         const token = GM_getValue('authToken', null);
         if (!token) return updateLoginUI(false);
@@ -287,6 +292,7 @@
     }
 
     startButtonEl.addEventListener('click', () => {
+        updateStartButtonUI(true);
         progressBarEl.style.width = '0%';
         const token = GM_getValue('authToken', null);
         if (!token || loginButtonEl.textContent !== 'Logout') return alert('Please log in first.');
@@ -308,10 +314,12 @@
                         processPromptsFlow(textareaElement, prompts);
                     } else {
                         alert('No prompts were returned.');
+                        updateStartButtonUI(false);
                     }
                 } catch (e) {
                     console.error('[Tampermonkey] ❌ Failed to parse response:', e);
                     alert('Failed to process response.');
+                    updateStartButtonUI(false);
                 }
             },
             onerror: (error) => {
@@ -319,6 +327,7 @@
                 progressBarEl.style.backgroundColor = 'red';
                 alert('An error occurred.');
                 setTimeout(() => { progressBarEl.style.width = '0%'; progressBarEl.style.backgroundColor = '#4caf50'; }, 2000);
+                updateStartButtonUI(false);
             }
         });
     });
@@ -330,6 +339,7 @@
  * @param {string[]} prompts - 要处理的 prompt 字符串数组。
  */
     async function processPromptsFlow(textareaElement, prompts) {
+        updateStartButtonUI(true);
         progressBarEl.style.width = '0%';
         // 确保 prompts 是一个数组，并且有内容
         if (!Array.isArray(prompts) || prompts.length === 0) {
@@ -369,6 +379,8 @@
                 // 如果希望失败时停止整个流程，可以在这里加上 `throw error;` 或 `return;`
                 alert(`Failed to process prompt: "${prompt.substring(0, 10)}..." Error: ${error.message}`);
                 throw error; // 取消注释以在失败时停止整个流程
+            } finally {
+                updateStartButtonUI(false);
             }
         }
 
