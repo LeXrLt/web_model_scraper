@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.8
+// @version      0.9
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
@@ -30,7 +30,9 @@
     const dialog = document.createElement('div');
     dialog.id = 'fission-dialog';
     dialog.innerHTML = `
-        <div id="fission-dialog-header">Prompt Fission</div>
+        <div id="fission-dialog-header">
+            Prompt Fission <span id="fission-version">V${GM_info.script.version}</span>
+        </div>
         <div id="fission-dialog-content">
             <div id="fission-status-container">
                 <span id="fission-login-status">Verifying...</span>
@@ -60,6 +62,7 @@
         #fission-prompt-input { width: 100%; height: 60px; padding: 5px; }
         #fission-progress-bar-container { width: 100%; height: 20px; background-color: #e0e0e0; border-radius: 5px; }
         #fission-progress-bar { width: 0%; height: 100%; background-color: #4caf50; border-radius: 5px; transition: width 0.3s; }
+        #fission-version { font-size: 0.8em; color: #aaa; margin-left: 10px; font-weight: normal; }
     `);
 
 
