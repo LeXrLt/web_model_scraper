@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.9.1
+// @version      0.9.2
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
@@ -291,6 +291,30 @@
         });
     }
 
+    function clickOpenNewConversation(timeoutMs = 5000) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            const tryClick = () => {
+                const span = Array.from(document.querySelectorAll('span'))
+                    .find(el => el.textContent && el.textContent.trim() === '开启新对话');
+                if (span) {
+                    const clickable = span.closest('button, a, [role="button"], [onclick], [tabindex]') || span;
+                    clickable.click();
+                    console.log('[Tampermonkey] ✅ 已点击 “开启新对话”。');
+                    resolve();
+                    return;
+                }
+                if (Date.now() - start >= timeoutMs) {
+                    console.warn('[Tampermonkey] ❌ 未在超时前找到 “开启新对话”。');
+                    reject(new Error('“开启新对话”元素未找到'));
+                    return;
+                }
+                setTimeout(tryClick, 300);
+            };
+            tryClick();
+        });
+    }
+
     startButtonEl.addEventListener('click', () => {
         updateStartButtonUI(true);
         progressBarEl.style.width = '0%';
@@ -356,11 +380,15 @@
             try {
                 console.log(`[Tampermonkey] ⏳ Processing prompt: "${prompt.substring(0, 10)}..."`);
 
-                // 1. 模拟输入/粘贴 prompt
+                // 1. 点击开启新对话
+                await clickOpenNewConversation();
+                console.log(`[Tampermonkey] ✅ New conversation opened successfully.`);
+
+                // 2. 模拟输入/粘贴 prompt
                 await simulateInputAtCursor(textareaElement, prompt);
                 console.log(`[Tampermonkey] ✅ Prompt pasted successfully.`);
 
-                // 2. 执行 prompt
+                // 3. 执行 prompt
                 await executePromptOnPagePromise();
                 console.log(`[Tampermonkey] ✅ Prompt executed successfully.`);
 
@@ -450,7 +478,7 @@
                     if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
                         try {
                             document.execCommand('insertText', false, message);
-                            // console.log('粘贴成功（方式一）');
+                            console.log('[Tampermonkey] 粘贴成功（方式一）');
                             resolve();
                         } catch (e) {
                             // console.warn('方式一失败，尝试其他方法');
@@ -459,17 +487,17 @@
                     }
 
                     // 方式二：如果 execCommand 失败，尝试直接设置值
-                    if (activeElement.setSelectionRange) {
+                    else if (activeElement.setSelectionRange) {
                         const start = activeElement.selectionStart;
                         const end = activeElement.selectionEnd;
                         activeElement.value = activeElement.value.substring(0, start) + message + activeElement.value.substring(end);
                         activeElement.setSelectionRange(start + message.length, start + message.length);
-                        // console.log('粘贴成功（方式二）');
+                        console.log('[Tampermonkey] 粘贴成功（方式二）');
                         resolve();
                     }
 
                     // 方式三：如果是 contenteditable 元素
-                    if (activeElement.isContentEditable) {
+                    else if (activeElement.isContentEditable) {
                         const selection = window.getSelection();
                         if (selection.rangeCount > 0) {
                             const range = selection.getRangeAt(0);
@@ -480,20 +508,22 @@
                             range.collapse(false);
                             selection.removeAllRanges();
                             selection.addRange(range);
-                            // console.log('粘贴成功（方式三）');
+                            console.log('[Tampermonkey] 粘贴成功（方式三）');
                             resolve();
                         }
                     }
 
-                    // 方式四：如果 setSelectionRange 和 contenteditable 也不支持，尝试模拟按键事件
-                    for (let i = 0; i < message.length; i++) {
-                        const keyEvent = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: message[i] });
-                        activeElement.dispatchEvent(keyEvent);
-                        const inputEvent = new InputEvent('input', { bubbles: true, cancelable: true, data: message[i] });
-                        activeElement.dispatchEvent(inputEvent);
+                    else {
+                        // 方式四：如果 setSelectionRange 和 contenteditable 也不支持，尝试模拟按键事件
+                        for (let i = 0; i < message.length; i++) {
+                            const keyEvent = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: message[i] });
+                            activeElement.dispatchEvent(keyEvent);
+                            const inputEvent = new InputEvent('input', { bubbles: true, cancelable: true, data: message[i] });
+                            activeElement.dispatchEvent(inputEvent);
+                        }
+                        console.log('[Tampermonkey] 粘贴成功（方式四）');
+                        resolve();
                     }
-                    // console.log('粘贴成功（方式四）');
-                    resolve();
                 } else {
                     // 如果还没有超过最大等待时间，继续检查
                     attempts++;
