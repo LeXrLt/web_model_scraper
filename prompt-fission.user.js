@@ -158,6 +158,92 @@
     function updateStartButtonUI(isProcessing) {
         startButtonEl.textContent = isProcessing ? 'Processing...' : 'Start';
         startButtonEl.disabled = isProcessing;
+        if (isProcessing) {
+            if (!updateStartButtonUI._overlay) {
+                const overlay = document.createElement('div');
+                overlay.id = 'fission-overlay';
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.right = '0';
+                overlay.style.bottom = '0';
+                overlay.style.zIndex = '2147483647';
+                overlay.style.background = 'rgba(0,0,0,0)';
+                overlay.style.cursor = 'not-allowed';
+
+                const toast = document.createElement('div');
+                toast.id = 'fission-overlay-toast';
+                toast.textContent = '正在处理，请勿操作！';
+                toast.style.position = 'fixed';
+                toast.style.top = '20%';
+                toast.style.left = '50%';
+                toast.style.transform = 'translate(-50%, -50%)';
+                toast.style.background = 'rgba(0,0,0,0.8)';
+                toast.style.color = '#fff';
+                toast.style.padding = '10px 16px';
+                toast.style.borderRadius = '8px';
+                toast.style.fontSize = '14px';
+                toast.style.fontFamily = 'sans-serif';
+                toast.style.display = 'none';
+                toast.style.pointerEvents = 'none';
+                toast.style.zIndex = '2147483647';
+                overlay.appendChild(toast);
+
+                const onInteract = (e) => {
+                    if (!e) return;
+                    if (typeof e.preventDefault === 'function') e.preventDefault();
+                    if (typeof e.stopImmediatePropagation === 'function') e.stopImmediatePropagation();
+                    if (typeof e.stopPropagation === 'function') e.stopPropagation();
+                    if (!updateStartButtonUI._toastTimer && toast.style.display !== 'block') {
+                        updateStartButtonUI._toastTimer = setTimeout(() => {
+                            toast.style.display = 'block';
+                            if (updateStartButtonUI._toastHideTimer) clearTimeout(updateStartButtonUI._toastHideTimer);
+                            updateStartButtonUI._toastHideTimer = setTimeout(() => {
+                                toast.style.display = 'none';
+                            }, 2000);
+                            updateStartButtonUI._toastTimer = null;
+                        }, 1000);
+                    }
+                    return false;
+                };
+
+                ['pointerdown','pointerup','click','dblclick','contextmenu','wheel','touchstart','touchmove','touchend','mousedown','mouseup','mousemove'].forEach((ev) => {
+                    overlay.addEventListener(ev, onInteract, { capture: true });
+                });
+
+                const keyHandler = (e) => onInteract(e);
+                ['keydown','keypress','keyup','wheel'].forEach((ev) => {
+                    document.addEventListener(ev, keyHandler, true);
+                });
+
+                updateStartButtonUI._overlay = overlay;
+                updateStartButtonUI._keyHandler = keyHandler;
+                document.body.appendChild(overlay);
+            }
+        } else {
+            const overlay = updateStartButtonUI._overlay;
+            if (overlay && overlay.parentNode) {
+                overlay.parentNode.removeChild(overlay);
+            }
+            updateStartButtonUI._overlay = null;
+
+            const keyHandler = updateStartButtonUI._keyHandler;
+            if (keyHandler) {
+                ['keydown','keypress','keyup','wheel'].forEach((ev) => {
+                    document.removeEventListener(ev, keyHandler, true);
+                });
+            }
+            updateStartButtonUI._keyHandler = null;
+
+            if (updateStartButtonUI._toastTimer) {
+                clearTimeout(updateStartButtonUI._toastTimer);
+                updateStartButtonUI._toastTimer = null;
+            }
+            if (updateStartButtonUI._toastHideTimer) {
+                clearTimeout(updateStartButtonUI._toastHideTimer);
+                updateStartButtonUI._toastHideTimer = null;
+            }
+        }
     }
 
     function checkLoginStatus() {
