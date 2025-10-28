@@ -591,16 +591,16 @@
                 console.warn('[Tampermonkey] ❌ 未登录，无法上传蒸馏数据');
                 return reject('Not logged in');
             }
-            const thinkingContents = document.querySelectorAll('div[class*="ds-think-content"]');
+            // const thinkingContents = document.querySelectorAll('div[class*="ds-think-content"]');
             const outputContents = document.querySelectorAll('div[class*="ds-markdown"]');
-            if (thinkingContents.length === 0 || outputContents.length === 0) {
+            if (outputContents.length === 0) {
                 console.warn('[Tampermonkey] ❌ 未找到蒸馏内容区域');
                 alert('未找到推理过程，请打开【深度思考】后再试。');
                 reject('Thinking content area not found');
                 return;
             }
-            const thinkingContent = thinkingContents[thinkingContents.length - 1];
-            const thinkingData = thinkingContent.innerText;
+            // const thinkingContent = thinkingContents[thinkingContents.length - 1];
+            // const thinkingData = thinkingContent.innerText;
             const outputContent = outputContents[outputContents.length - 1];
             const outputData = outputContent.innerText;
             const payload = {
@@ -608,8 +608,8 @@
                 subTaskId: subTaskId,
                 prompt: prompt,
                 content: prompt,
-                inference_process: thinkingData,
-                inferenceProcess: thinkingData,
+                // inference_process: thinkingData,
+                // inferenceProcess: thinkingData,
                 model_output: outputData,
                 modelOutput: outputData
             };
