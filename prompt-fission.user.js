@@ -1,25 +1,31 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.9.4
+// @version      0.9.5
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
 // @match        https://prompt.zheshi.tech/*
+// @match        http://192.168.31.112:3000/*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @connect      prompt.zheshi.tech
+// @connect      192.168.31.112
 // ==/UserScript==
 
 (function () {
     'use strict';
 
     // --- CONFIGURATION ---
-    const API_BASE_URL = 'https://prompt.zheshi.tech/api/v1';
-    const LOGIN_URL = 'https://prompt.zheshi.tech';
-    const TOKEN_SYNC_URL = 'https://prompt.zheshi.tech';
+    // const API_BASE_URL = 'https://prompt.zheshi.tech/api/v1';
+    // const LOGIN_URL = 'https://prompt.zheshi.tech';
+    // const TOKEN_SYNC_URL = 'https://prompt.zheshi.tech';
+
+    const API_BASE_URL = 'http://192.168.31.112:3000/api/v1';
+    const LOGIN_URL = 'http://192.168.31.112:3000';
+    const TOKEN_SYNC_URL = 'http://192.168.31.112:3000';
 
     // --- 1. CREATE UI ELEMENTS ---
     const button = document.createElement('div');
@@ -207,12 +213,12 @@
                     return false;
                 };
 
-                ['pointerdown','pointerup','click','dblclick','contextmenu','wheel','touchstart','touchmove','touchend','mousedown','mouseup','mousemove'].forEach((ev) => {
+                ['pointerdown', 'pointerup', 'click', 'dblclick', 'contextmenu', 'wheel', 'touchstart', 'touchmove', 'touchend', 'mousedown', 'mouseup', 'mousemove'].forEach((ev) => {
                     overlay.addEventListener(ev, onInteract, { capture: true });
                 });
 
                 const keyHandler = (e) => onInteract(e);
-                ['keydown','keypress','keyup','wheel'].forEach((ev) => {
+                ['keydown', 'keypress', 'keyup', 'wheel'].forEach((ev) => {
                     document.addEventListener(ev, keyHandler, true);
                 });
 
@@ -229,7 +235,7 @@
 
             const keyHandler = updateStartButtonUI._keyHandler;
             if (keyHandler) {
-                ['keydown','keypress','keyup','wheel'].forEach((ev) => {
+                ['keydown', 'keypress', 'keyup', 'wheel'].forEach((ev) => {
                     document.removeEventListener(ev, keyHandler, true);
                 });
             }
@@ -246,14 +252,87 @@
         }
     }
 
+    function normalizeArrayFromResponse(resp) {
+        if (!resp) return [];
+        if (Array.isArray(resp)) return resp;
+        if (typeof resp === 'string') {
+            try { const j = JSON.parse(resp); return normalizeArrayFromResponse(j); } catch (_) { return []; }
+        }
+        if (typeof resp === 'object') {
+            const cands = ['data', 'items', 'list', 'records', 'rows', 'results', 'prompts', 'tasks'];
+            for (const key of cands) {
+                const v = resp[key];
+                if (Array.isArray(v)) return v;
+                if (v && typeof v === 'object') {
+                    for (const k2 of cands) {
+                        if (Array.isArray(v[k2])) return v[k2];
+                    }
+                }
+            }
+        }
+        return [];
+    }
+
+    function pickField(obj, keys) {
+        for (const k of keys) {
+            if (obj && Object.prototype.hasOwnProperty.call(obj, k) && obj[k] != null) return obj[k];
+        }
+        return undefined;
+    }
+
+    function normalizeTaskItem(item) {
+        if (typeof item === 'string') return { prompt: item, sub_task_id: undefined };
+        if (!item || typeof item !== 'object') return null;
+        const prompt = pickField(item, ['prompt', 'content', 'text', 'query', 'message', 'instruction', 'input']);
+        const subTaskId = pickField(item, ['sub_task_id', 'subTaskId', 'task_id', 'taskId', 'id', '_id']);
+        if (!prompt) return null;
+        return { prompt, sub_task_id: subTaskId };
+    }
+
+    function normalizeTasksFromAny(resp) {
+        const arr = normalizeArrayFromResponse(resp);
+        const result = [];
+        for (const it of arr) {
+            const n = normalizeTaskItem(it);
+            if (n) result.push(n);
+        }
+        return result;
+    }
+
+    function getCookieValueFromDocument(name) {
+        const m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/([.$?*|{}()\[\]\\\/\+^])/g, '\\$1') + '=([^;]*)'));
+        return m ? decodeURIComponent(m[1]) : null;
+    }
+
+    function syncAuthCookieFromDocument() {
+        const val = getCookieValueFromDocument('auth_token');
+        if (val) { 
+            GM_setValue('cookie_auth_token', val); 
+            updateLoginUI(true);
+        }
+    }
+
+    function buildAuthCookieHeader() {
+        const saved = GM_getValue('cookie_auth_token', null);
+        if (!saved) return null;
+        return `auth_token=${saved}`;
+    }
+
+    function authHeaderVal(token) {
+        if (!token) return '';
+        let t = String(token).trim();
+        if (/^(Bearer|JWT)\s+/i.test(t)) return t.replace(/^\s+|\s+$/g, '');
+        return `Bearer ${t}`;
+    }
+
     function checkLoginStatus() {
-        const token = GM_getValue('authToken', null);
-        if (!token) return updateLoginUI(false);
         updateLoginUI(false, 'Verifying...');
+        const cookieHeader = buildAuthCookieHeader();
         GM_xmlhttpRequest({
             method: 'GET',
             url: `${API_BASE_URL}/profile`,
-            headers: { 'Authorization': `Bearer ${token}` },
+            anonymous: cookieHeader ? true : false,
+            headers: cookieHeader ? { 'Cookie': cookieHeader } : {},
             onload: (response) => {
                 if (response.status === 200) {
                     updateLoginUI(true);
@@ -263,7 +342,6 @@
                             confirmAction(`You have ${tasks.length} pending tasks. Do you want to process them now?`).then(confirmed => {
                                 if (confirmed) {
                                     const textareaElement = document.querySelector('textarea[class*="ds-scroll-area"][class*="d96f2d2a"]');
-                                    // const prompts = tasks.map(task => ({ sub_task_id: task.id, prompt: task.prompt }));
                                     processPromptsFlow(textareaElement, tasks);
                                 }
                             });
@@ -271,29 +349,32 @@
                     }).catch(err => {
                         console.error('[Tampermonkey] ❌ Failed to query pending tasks:', err);
                     });
+                } else {
+                    updateLoginUI(false);
                 }
-                else { GM_setValue('authToken', null); updateLoginUI(false); }
             },
-            onerror: () => { GM_setValue('authToken', null); updateLoginUI(false, 'Error'); }
+            onerror: () => { updateLoginUI(false, 'Error'); }
         });
     }
 
     // 查询待处理任务接口
     function queryPendingTasks() {
         return new Promise((resolve, reject) => {
-            const token = GM_getValue('authToken', null);
-            if (!token || loginButtonEl.textContent !== 'Logout') {
+            if (loginButtonEl.textContent !== 'Logout') {
                 console.warn('[Tampermonkey] ❌ 未登录，无法查询待处理任务');
                 return reject('Not logged in');
             }
+            const cookieHeader = buildAuthCookieHeader();
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: `${API_BASE_URL}/pending-tasks`,
-                headers: { 'Authorization': `Bearer ${token}` },
+                anonymous: cookieHeader ? true : false,
+                headers: cookieHeader ? { 'Cookie': cookieHeader } : {},
                 onload: (response) => {
                     try {
                         const data = JSON.parse(response.responseText);
-                        resolve(data);
+                        const normalized = normalizeTasksFromAny(data);
+                        resolve(normalized);
                     } catch (e) {
                         console.error('[Tampermonkey] ❌ Failed to parse response:', e);
                         reject(e);
@@ -316,7 +397,7 @@
     }
 
     loginButtonEl.addEventListener('click', () => {
-        if (loginButtonEl.textContent === 'Logout') { GM_setValue('authToken', null); updateLoginUI(false); }
+        if (loginButtonEl.textContent === 'Logout') { GM_setValue('cookie_auth_token', null); updateLoginUI(false); }
         else { window.open(LOGIN_URL, '_blank'); }
     });
 
@@ -402,22 +483,24 @@
     }
 
     startButtonEl.addEventListener('click', () => {
-        updateStartButtonUI(true);
         progressBarEl.style.width = '0%';
-        const token = GM_getValue('authToken', null);
-        if (!token || loginButtonEl.textContent !== 'Logout') return alert('Please log in first.');
+        if (loginButtonEl.textContent !== 'Logout') { alert('Please log in first.'); updateStartButtonUI(false); return; }
         const prompt = promptInputEl.value;
-        if (!prompt.trim()) return alert('Please enter a prompt.');
+        if (!prompt.trim()) { alert('Please enter a prompt.'); updateStartButtonUI(false); return; }
+        updateStartButtonUI(true);
+        const cookieHeader = buildAuthCookieHeader();
         GM_xmlhttpRequest({
             method: 'POST',
             url: `${API_BASE_URL}/prompt-fission`,
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+            headers: Object.assign({ 'Content-Type': 'application/json' }, cookieHeader ? { 'Cookie': cookieHeader } : {}),
+            anonymous: cookieHeader ? true : false,
             data: JSON.stringify({ prompt }),
             // onprogress: (e) => { if (e.lengthComputable) progressBarEl.style.width = `${(e.loaded / e.total) * 100}%`; },
             onload: (response) => {
                 // progressBarEl.style.width = '100%';
                 try {
-                    const prompts = JSON.parse(response.responseText);
+                    const raw = JSON.parse(response.responseText);
+                    const prompts = normalizeTasksFromAny(raw);
                     // console.log('[Tampermonkey] 📥 Received response:', data);
                     if (prompts && prompts.length > 0) {
                         const textareaElement = document.querySelector('textarea[class*="ds-scroll-area"][class*="d96f2d2a"]');
@@ -451,18 +534,19 @@
     async function processPromptsFlow(textareaElement, prompts) {
         updateStartButtonUI(true);
         progressBarEl.style.width = '0%';
-        // 确保 prompts 是一个数组，并且有内容
-        if (!Array.isArray(prompts) || prompts.length === 0) {
+        const normalizedPrompts = normalizeTasksFromAny(prompts);
+        if (!Array.isArray(normalizedPrompts) || normalizedPrompts.length === 0) {
             console.log("[Tampermonkey] ⚠️ No prompts provided or prompts is not an array.");
+            updateStartButtonUI(false);
             return;
         }
 
-        console.log(`[Tampermonkey] 🚀 Starting to process ${prompts.length} prompts...`);
+        console.log(`[Tampermonkey] 🚀 Starting to process ${normalizedPrompts.length} prompts...`);
 
         // 使用 for...of 循环按顺序处理每个 prompt
-        for (let i = 0; i < prompts.length; i++) {
-            const prompt = prompts[i].prompt;
-            const subTaskId = prompts[i].sub_task_id;
+        for (let i = 0; i < normalizedPrompts.length; i++) {
+            const prompt = normalizedPrompts[i].prompt;
+            const subTaskId = normalizedPrompts[i].sub_task_id;
             try {
                 console.log(`[Tampermonkey] ⏳ Processing prompt: "${prompt.substring(0, 10)}..."`);
 
@@ -483,7 +567,7 @@
                 console.log(`[Tampermonkey] ✅ Distillation data uploaded successfully.`);
 
                 // 4. 更新进度条（如果有的话）
-                progressBarEl.style.width = `${((i + 1) / prompts.length) * 100}%`;
+                progressBarEl.style.width = `${((i + 1) / normalizedPrompts.length) * 100}%`;
                 // 可选：等待一段时间，以便观察或等待页面加载
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
@@ -498,12 +582,12 @@
         }
 
         console.log("[Tampermonkey] 🎉 All prompts processed successfully (or finished execution).");
+        updateStartButtonUI(false);
     }
 
     function uploadDistillationData(prompt, subTaskId) {
         return new Promise((resolve, reject) => {
-            const token = GM_getValue('authToken', null);
-            if (!token || loginButtonEl.textContent !== 'Logout') {
+            if (loginButtonEl.textContent !== 'Logout') {
                 console.warn('[Tampermonkey] ❌ 未登录，无法上传蒸馏数据');
                 return reject('Not logged in');
             }
@@ -513,17 +597,30 @@
                 console.warn('[Tampermonkey] ❌ 未找到蒸馏内容区域');
                 alert('未找到推理过程，请打开【深度思考】后再试。');
                 reject('Thinking content area not found');
+                return;
             }
             const thinkingContent = thinkingContents[thinkingContents.length - 1];
             const thinkingData = thinkingContent.innerText;
             const outputContent = outputContents[outputContents.length - 1];
             const outputData = outputContent.innerText;
-            const jsonData = JSON.stringify({ sub_task_id: subTaskId, prompt: prompt, inference_process: thinkingData, model_output: outputData });
+            const payload = {
+                sub_task_id: subTaskId,
+                subTaskId: subTaskId,
+                prompt: prompt,
+                content: prompt,
+                inference_process: thinkingData,
+                inferenceProcess: thinkingData,
+                model_output: outputData,
+                modelOutput: outputData
+            };
+            const jsonData = JSON.stringify(payload);
             // console.log('[Tampermonkey] 📤 上传蒸馏数据:', jsonData);
+            const cookieHeader = buildAuthCookieHeader();
             GM_xmlhttpRequest({
                 method: 'POST',
                 url: `${API_BASE_URL}/distillation-data`,
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                headers: Object.assign({ 'Content-Type': 'application/json' }, cookieHeader ? { 'Cookie': cookieHeader } : {}),
+                anonymous: cookieHeader ? true : false,
                 data: jsonData,
                 onload: (response) => {
                     try {
@@ -626,12 +723,9 @@
     // --- 5. INITIALIZE SCRIPT ---
     const currentUrl = window.current_url_for_testing || window.location.href;
     if (currentUrl.startsWith(TOKEN_SYNC_URL)) {
-        const token = localStorage.getItem('token');
-        if (token) {
-            GM_setValue('authToken', token);
-            checkLoginStatus();
-        }
-    } else {
+        syncAuthCookieFromDocument();
+    }
+    else {
         checkLoginStatus();
     }
 
