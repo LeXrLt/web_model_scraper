@@ -1,31 +1,28 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.9.5
+// @version      0.9.6
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
 // @match        https://prompt.zheshi.tech/*
-// @match        http://192.168.31.112:3000/*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @connect      prompt.zheshi.tech
-// @connect      192.168.31.112
 // ==/UserScript==
 
 (function () {
     'use strict';
 
     // --- CONFIGURATION ---
-    // const API_BASE_URL = 'https://prompt.zheshi.tech/api/v1';
-    // const LOGIN_URL = 'https://prompt.zheshi.tech';
-    // const TOKEN_SYNC_URL = 'https://prompt.zheshi.tech';
+    const API_BASE_URL = 'https://prompt.zheshi.tech/api/v1';
+    const LOGIN_URL = 'https://prompt.zheshi.tech';
 
-    const API_BASE_URL = 'http://192.168.31.112:3000/api/v1';
-    const LOGIN_URL = 'http://192.168.31.112:3000';
-    const TOKEN_SYNC_URL = 'http://192.168.31.112:3000';
+    // const API_BASE_URL = 'http://192.168.31.112:3000/api/v1';
+    // const LOGIN_URL = 'http://192.168.31.112:3000';
+    // const TOKEN_SYNC_URL = 'http://192.168.31.112:3000';
 
     // --- 1. CREATE UI ELEMENTS ---
     const button = document.createElement('div');
@@ -722,7 +719,7 @@
 
     // --- 5. INITIALIZE SCRIPT ---
     const currentUrl = window.current_url_for_testing || window.location.href;
-    if (currentUrl.startsWith(TOKEN_SYNC_URL)) {
+    if (currentUrl.startsWith(LOGIN_URL)) {
         syncAuthCookieFromDocument();
     }
     else {
