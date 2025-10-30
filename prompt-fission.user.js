@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.9.6
+// @version      0.9.7
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
@@ -158,6 +158,25 @@
         loginButtonEl.textContent = isLoggedIn ? 'Logout' : 'Login';
     }
 
+    function activateNetButton() {
+        const netButtonEl = Array.from(document.querySelectorAll('button, [role="button"]'))
+            .find(el => el.textContent?.replace(/\s+/g, '').includes('联网搜索'));
+        const activated = netButtonEl.classList.contains('ds-toggle-button--selected');
+        if (!activated) {
+            netButtonEl.click();
+        }
+    }
+
+    function deactivateDeepThoughtButton() {
+        const deepThoughtButtonEl = Array.from(document.querySelectorAll('button, [role="button"]'))
+            .find(el => el.textContent?.replace(/\s+/g, '').includes('深度思考'));
+        const activated = deepThoughtButtonEl.classList.contains('ds-toggle-button--selected');
+        if (activated) {
+            deepThoughtButtonEl.click();
+        }
+    }
+
+
     function updateStartButtonUI(isProcessing) {
         startButtonEl.textContent = isProcessing ? 'Processing...' : 'Start';
         startButtonEl.disabled = isProcessing;
@@ -303,8 +322,8 @@
 
     function syncAuthCookieFromDocument() {
         const val = getCookieValueFromDocument('auth_token');
-        if (val) { 
-            GM_setValue('cookie_auth_token', val); 
+        if (val) {
+            GM_setValue('cookie_auth_token', val);
             updateLoginUI(true);
         }
     }
@@ -530,6 +549,8 @@
  */
     async function processPromptsFlow(textareaElement, prompts) {
         updateStartButtonUI(true);
+        activateNetButton();
+        deactivateDeepThoughtButton();
         progressBarEl.style.width = '0%';
         const normalizedPrompts = normalizeTasksFromAny(prompts);
         if (!Array.isArray(normalizedPrompts) || normalizedPrompts.length === 0) {
