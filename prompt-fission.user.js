@@ -26,9 +26,26 @@
 
     // --- 1. CREATE UI ELEMENTS ---
     const button = document.createElement('div');
-    button.textContent = 'P';
     button.id = 'fission-button';
+    const buttonIcon = document.createElement('span');
+    buttonIcon.id = 'fission-button-icon';
+    buttonIcon.textContent = '▶️';
+    button.appendChild(buttonIcon);
+    const progressRing = document.createElement('div');
+    progressRing.id = 'fission-progress-ring';
+    progressRing.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true"><circle class="ring-track" cx="50" cy="50" r="45"></circle><circle class="ring-progress" cx="50" cy="50" r="45"></circle></svg>';
+    button.appendChild(progressRing);
     document.body.appendChild(button);
+
+    const ringProgressEl = progressRing.querySelector('.ring-progress');
+    const R = 45;
+    const C = 2 * Math.PI * R;
+    ringProgressEl.style.strokeDasharray = String(C);
+    ringProgressEl.style.strokeDashoffset = String(C);
+    function setButtonProgress(p) {
+        const v = Math.max(0, Math.min(100, Number(p) || 0));
+        ringProgressEl.style.strokeDashoffset = String(C * (1 - v / 100));
+    }
 
     const dialog = document.createElement('div');
     dialog.id = 'fission-dialog';
@@ -45,9 +62,6 @@
                 <textarea id="fission-prompt-input" placeholder="Enter your prompt here..."></textarea>
                 <button id="fission-start-button">Start</button>
             </div>
-            <div id="fission-progress-bar-container">
-                <div id="fission-progress-bar"></div>
-            </div>
         </div>
     `;
     document.body.appendChild(dialog);
@@ -63,8 +77,11 @@
         #fission-login-button, #fission-start-button { padding: 5px 10px; cursor: pointer; }
         #fission-prompt-container { display: flex; gap: 10px; }
         #fission-prompt-input { width: 100%; height: 60px; padding: 5px; }
-        #fission-progress-bar-container { width: 100%; height: 20px; background-color: #e0e0e0; border-radius: 5px; }
-        #fission-progress-bar { width: 0%; height: 100%; background-color: #4caf50; border-radius: 5px; transition: width 0.3s; }
+        #fission-button #fission-button-icon { position: relative; z-index: 1; font-size: 20px; }
+        #fission-progress-ring { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
+        #fission-progress-ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+        #fission-progress-ring .ring-track { fill: none; stroke: rgba(255,255,255,0.35); stroke-width: 6; }
+        #fission-progress-ring .ring-progress { fill: none; stroke: #ffffff; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 0.25s ease; }
         #fission-version { font-size: 0.8em; color: #aaa; margin-left: 10px; font-weight: normal; }
     `);
 
@@ -151,7 +168,7 @@
     const loginButtonEl = document.getElementById('fission-login-button');
     const startButtonEl = document.getElementById('fission-start-button');
     const promptInputEl = document.getElementById('fission-prompt-input');
-    const progressBarEl = document.getElementById('fission-progress-bar');
+    
 
     function updateLoginUI(isLoggedIn, statusText = '') {
         loginStatusEl.textContent = statusText || (isLoggedIn ? 'Logged In' : 'Not Logged In');
@@ -178,6 +195,7 @@
 
 
     function updateStartButtonUI(isProcessing) {
+        buttonIcon.textContent = isProcessing ? '⏸' : '▶️';
         startButtonEl.textContent = isProcessing ? 'Processing...' : 'Start';
         startButtonEl.disabled = isProcessing;
         if (isProcessing) {
@@ -499,7 +517,7 @@
     }
 
     startButtonEl.addEventListener('click', () => {
-        progressBarEl.style.width = '0%';
+        setButtonProgress(0);
         if (loginButtonEl.textContent !== 'Logout') { alert('Please log in first.'); updateStartButtonUI(false); return; }
         const prompt = promptInputEl.value;
         if (!prompt.trim()) { alert('Please enter a prompt.'); updateStartButtonUI(false); return; }
@@ -533,9 +551,8 @@
             },
             onerror: (error) => {
                 console.error('[Tampermonkey] ❌ Error:', error);
-                progressBarEl.style.backgroundColor = 'red';
                 alert('An error occurred.');
-                setTimeout(() => { progressBarEl.style.width = '0%'; progressBarEl.style.backgroundColor = '#4caf50'; }, 2000);
+                setTimeout(() => { setButtonProgress(0); }, 2000);
                 updateStartButtonUI(false);
             }
         });
@@ -551,7 +568,7 @@
         updateStartButtonUI(true);
         activateNetButton();
         deactivateDeepThoughtButton();
-        progressBarEl.style.width = '0%';
+        setButtonProgress(0);
         const normalizedPrompts = normalizeTasksFromAny(prompts);
         if (!Array.isArray(normalizedPrompts) || normalizedPrompts.length === 0) {
             console.log("[Tampermonkey] ⚠️ No prompts provided or prompts is not an array.");
@@ -584,8 +601,8 @@
                 await uploadDistillationData(prompt, subTaskId);
                 console.log(`[Tampermonkey] ✅ Distillation data uploaded successfully.`);
 
-                // 4. 更新进度条（如果有的话）
-                progressBarEl.style.width = `${((i + 1) / normalizedPrompts.length) * 100}%`;
+                // 4. 更新环形进度
+                setButtonProgress(((i + 1) / normalizedPrompts.length) * 100);
                 // 可选：等待一段时间，以便观察或等待页面加载
                 await new Promise(resolve => setTimeout(resolve, 1000));
 
