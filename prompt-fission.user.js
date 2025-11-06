@@ -83,6 +83,13 @@
         #fission-progress-ring .ring-track { fill: none; stroke: rgba(255,255,255,0.35); stroke-width: 6; }
         #fission-progress-ring .ring-progress { fill: none; stroke: #ffffff; stroke-width: 6; stroke-linecap: round; transition: stroke-dashoffset 0.25s ease; }
         #fission-version { font-size: 0.8em; color: #aaa; margin-left: 10px; font-weight: normal; }
+        #fission-popup-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 2147483648; }
+        #fission-popup { width: 360px; max-width: calc(100% - 40px); background: #fff; border: 1px solid #ccc; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-family: sans-serif; overflow: hidden; }
+        #fission-popup-header { padding: 10px 14px; background: #f1f1f1; border-bottom: 1px solid #ccc; }
+        #fission-popup-content { padding: 16px; color: #333; font-size: 14px; line-height: 1.5; }
+        #fission-popup-actions { padding: 10px 14px; display: flex; justify-content: flex-end; gap: 8px; background: #fafafa; border-top: 1px solid #eee; }
+        .fission-btn { padding: 6px 12px; border-radius: 6px; border: 1px solid #ccc; background: #fff; cursor: pointer; font-size: 14px; }
+        .fission-btn.primary { background: #007bff; color: #fff; border-color: #007bff; }
     `);
 
 
@@ -125,6 +132,123 @@
     }
 
     makeDraggable(dialog, dialog.querySelector('#fission-dialog-header'));
+
+    function showPluginAlert(message, options = {}) {
+        const title = options.title || 'Prompt Fission';
+        const okText = options.okText || 'OK';
+        const existing = document.getElementById('fission-popup-overlay');
+        if (showPluginAlert._activeKeydown) {
+            document.removeEventListener('keydown', showPluginAlert._activeKeydown, true);
+            showPluginAlert._activeKeydown = null;
+        }
+        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        const overlay = document.createElement('div');
+        overlay.id = 'fission-popup-overlay';
+        const popup = document.createElement('div');
+        popup.id = 'fission-popup';
+        const header = document.createElement('div');
+        header.id = 'fission-popup-header';
+        header.textContent = title;
+        const content = document.createElement('div');
+        content.id = 'fission-popup-content';
+        content.textContent = String(message || '');
+        const actions = document.createElement('div');
+        actions.id = 'fission-popup-actions';
+        const okBtn = document.createElement('button');
+        okBtn.className = 'fission-btn primary';
+        okBtn.textContent = okText;
+        actions.appendChild(okBtn);
+        popup.appendChild(header);
+        popup.appendChild(content);
+        popup.appendChild(actions);
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+        return new Promise((resolve) => {
+            const onKey = (e) => {
+                if (e.key === 'Escape' || e.key === 'Enter') {
+                    e.preventDefault();
+                    close(true);
+                }
+            };
+            showPluginAlert._activeKeydown = onKey;
+            const close = (result) => {
+                if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                if (showPluginAlert._activeKeydown === onKey) {
+                    document.removeEventListener('keydown', onKey, true);
+                    showPluginAlert._activeKeydown = null;
+                }
+                resolve(result);
+            };
+            okBtn.addEventListener('click', () => close(true));
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) close(true);
+            }, { capture: true });
+            document.addEventListener('keydown', onKey, true);
+        });
+    }
+
+    function showPluginConfirm(message, options = {}) {
+        const title = options.title || 'Prompt Fission';
+        const okText = options.okText || 'OK';
+        const cancelText = options.cancelText || 'Cancel';
+        const existing = document.getElementById('fission-popup-overlay');
+        if (showPluginConfirm._activeKeydown) {
+            document.removeEventListener('keydown', showPluginConfirm._activeKeydown, true);
+            showPluginConfirm._activeKeydown = null;
+        }
+        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        const overlay = document.createElement('div');
+        overlay.id = 'fission-popup-overlay';
+        const popup = document.createElement('div');
+        popup.id = 'fission-popup';
+        const header = document.createElement('div');
+        header.id = 'fission-popup-header';
+        header.textContent = title;
+        const content = document.createElement('div');
+        content.id = 'fission-popup-content';
+        content.textContent = String(message || '');
+        const actions = document.createElement('div');
+        actions.id = 'fission-popup-actions';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'fission-btn';
+        cancelBtn.textContent = cancelText;
+        const okBtn = document.createElement('button');
+        okBtn.className = 'fission-btn primary';
+        okBtn.textContent = okText;
+        actions.appendChild(cancelBtn);
+        actions.appendChild(okBtn);
+        popup.appendChild(header);
+        popup.appendChild(content);
+        popup.appendChild(actions);
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+        return new Promise((resolve) => {
+            const onKey = (e) => {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    close(false);
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    close(true);
+                }
+            };
+            showPluginConfirm._activeKeydown = onKey;
+            const close = (result) => {
+                if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                if (showPluginConfirm._activeKeydown === onKey) {
+                    document.removeEventListener('keydown', onKey, true);
+                    showPluginConfirm._activeKeydown = null;
+                }
+                resolve(result);
+            };
+            okBtn.addEventListener('click', () => close(true));
+            cancelBtn.addEventListener('click', () => close(false));
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) close(false);
+            }, { capture: true });
+            document.addEventListener('keydown', onKey, true);
+        });
+    }
 
     function toggleDialog() { dialog.style.display = (dialog.style.display === 'none' || dialog.style.display === '') ? 'block' : 'none'; }
     button.addEventListener('mousedown', (e) => {
@@ -424,10 +548,7 @@
 
     // 弹窗询问确认操作
     function confirmAction(message) {
-        return new Promise((resolve) => {
-            const confirmation = window.confirm(message);
-            resolve(confirmation);
-        });
+        return showPluginConfirm(message);
     }
 
     loginButtonEl.addEventListener('click', () => {
@@ -447,7 +568,7 @@
                 if (disabledBtn) {
                     clearInterval(checkInterval);
                     // 发送完成后的操作
-                    alert('Prompt executed successfully.');
+                    showPluginAlert('Prompt executed successfully.');
                 }
             }, 500);
         } else {
@@ -518,9 +639,9 @@
 
     startButtonEl.addEventListener('click', () => {
         setButtonProgress(0);
-        if (loginButtonEl.textContent !== 'Logout') { alert('Please log in first.'); updateStartButtonUI(false); return; }
+        if (loginButtonEl.textContent !== 'Logout') { showPluginAlert('Please log in first.'); updateStartButtonUI(false); return; }
         const prompt = promptInputEl.value;
-        if (!prompt.trim()) { alert('Please enter a prompt.'); updateStartButtonUI(false); return; }
+        if (!prompt.trim()) { showPluginAlert('Please enter a prompt.'); updateStartButtonUI(false); return; }
         updateStartButtonUI(true);
         const cookieHeader = buildAuthCookieHeader();
         GM_xmlhttpRequest({
@@ -540,18 +661,18 @@
                         const textareaElement = document.querySelector('textarea[class*="ds-scroll-area"][class*="d96f2d2a"]');
                         processPromptsFlow(textareaElement, prompts);
                     } else {
-                        alert('No prompts were returned.');
+                        showPluginAlert('No prompts were returned.');
                         updateStartButtonUI(false);
                     }
                 } catch (e) {
                     console.error('[Tampermonkey] ❌ Failed to parse response:', e);
-                    alert('Failed to process response.');
+                    showPluginAlert('Failed to process response.');
                     updateStartButtonUI(false);
                 }
             },
             onerror: (error) => {
                 console.error('[Tampermonkey] ❌ Error:', error);
-                alert('An error occurred.');
+                showPluginAlert('An error occurred.');
                 setTimeout(() => { setButtonProgress(0); }, 2000);
                 updateStartButtonUI(false);
             }
@@ -610,7 +731,7 @@
                 // 如果一个 prompt 失败，记录错误并继续处理下一个 prompt (或选择中断)
                 console.error(`[Tampermonkey] ❌ Failed to process prompt: "${prompt.substring(0, 10)}..."`, error);
                 // 如果希望失败时停止整个流程，可以在这里加上 `throw error;` 或 `return;`
-                alert(`Failed to process prompt: "${prompt.substring(0, 10)}..." Error: ${error.message}`);
+                showPluginAlert(`Failed to process prompt: "${prompt.substring(0, 10)}..." Error: ${error.message}`);
                 updateStartButtonUI(false);
                 throw error; // 取消注释以在失败时停止整个流程
             }
@@ -630,7 +751,7 @@
             const outputContents = document.querySelectorAll('div[class*="ds-markdown"]');
             if (outputContents.length === 0) {
                 console.warn('[Tampermonkey] ❌ 未找到蒸馏内容区域');
-                alert('未找到推理过程，请打开【深度思考】后再试。');
+                showPluginAlert('未找到推理过程，请打开【深度思考】后再试。');
                 reject('Thinking content area not found');
                 return;
             }
@@ -664,7 +785,7 @@
                         resolve();
                     } catch (e) {
                         console.error('[Tampermonkey] ❌ Failed to parse response:', e);
-                        alert('Failed to process response.');
+                        showPluginAlert('Failed to process response.');
                         reject(e);
                     }
                 },
