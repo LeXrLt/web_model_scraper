@@ -1,11 +1,12 @@
 // ==UserScript==
 // @name         Prompt Fission
 // @namespace    http://tampermonkey.net/
-// @version      0.9.7
+// @version      0.10.0
 // @description  Enhances chat interfaces with prompt fission capabilities.
 // @author       lele
 // @match        https://chat.deepseek.com/*
 // @match        https://prompt.zheshi.tech/*
+// @match        https://www.doubao.com/*
 // @grant        GM_addStyle
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -294,27 +295,265 @@
     const promptInputEl = document.getElementById('fission-prompt-input');
     
 
+    const SiteKey = (() => {
+        const u = window.current_url_for_testing || window.location.href;
+        if (u.startsWith('https://chat.deepseek.com')) return 'deepseek';
+        if (u.startsWith('https://www.doubao.com')) return 'doubao';
+        return 'unknown';
+    })();
+
+    function isEditableEl(el) {
+        if (!el) return false;
+        if (el instanceof HTMLInputElement) return true;
+        if (el instanceof HTMLTextAreaElement) return true;
+        if (el.isContentEditable && el.contentEditable === 'true') return true;
+        if (el.getAttribute && el.getAttribute('role') === 'textbox') return true;
+        return false;
+    }
+
+    function findEditableInput() {
+        const cands = [
+            'textarea[class*="ds-scroll-area"][class*="d96f2d2a"]',
+            'textarea[placeholder]',
+            'textarea',
+            '[contenteditable="true"]',
+            '[role="textbox"]',
+            'div[aria-multiline="true"]',
+            'div[data-slate-editor="true"]'
+        ];
+        for (const sel of cands) {
+            const list = Array.from(document.querySelectorAll(sel));
+            const el = list.find(e => isEditableEl(e) && e.offsetParent !== null);
+            if (el) return el;
+        }
+        const ae = document.activeElement;
+        return isEditableEl(ae) ? ae : null;
+    }
+
+    function findSendButton() {
+        if (SiteKey === 'deepseek') {
+            const ds = Array.from(document.querySelectorAll('div[role="button"][class*="_7436101"]')).find(el => el.getAttribute('aria-disabled') === 'false');
+            if (ds) return ds;
+        }
+        const list = Array.from(document.querySelectorAll('button, [role="button"], [aria-label]')).filter(e => e.offsetParent !== null);
+        const el = list.find(e => {
+            const t = (e.textContent || e.getAttribute('aria-label') || '').replace(/\s+/g, '');
+            return ['发送', 'Send', '发送消息', '提交', '提问', 'Ask'].some(k => t.includes(k));
+        });
+        return el || null;
+    }
+
+    function pressEnter(target) {
+        if (!target) return false;
+        target.focus();
+        const fire = (opts) => {
+            const ev1 = new KeyboardEvent('keydown', Object.assign({ bubbles: true, cancelable: true, key: 'Enter', code: 'Enter' }, opts));
+            const ev2 = new KeyboardEvent('keypress', Object.assign({ bubbles: true, cancelable: true, key: 'Enter', code: 'Enter' }, opts));
+            const ev3 = new KeyboardEvent('keyup', Object.assign({ bubbles: true, cancelable: true, key: 'Enter', code: 'Enter' }, opts));
+            target.dispatchEvent(ev1);
+            target.dispatchEvent(ev2);
+            target.dispatchEvent(ev3);
+        };
+        fire({});
+        fire({ ctrlKey: true });
+        fire({ metaKey: true });
+        return true;
+    }
+
+    function sendPrompt() {
+        const btn = findSendButton();
+        if (btn) { btn.click(); return true; }
+        const input = findEditableInput();
+        if (input) { return pressEnter(input); }
+        return false;
+    }
+
+    function textIncludes(el, arr) {
+        const txt = ((el && (el.textContent || el.getAttribute('aria-label'))) || '').replace(/\s+/g, '');
+        return arr.some(k => txt.includes(k.replace(/\s+/g, '')));
+    }
+
+    function findClickableNear(el) {
+        if (!el) return null;
+        const clickableSel = 'button, [role="button"], [role="switch"], input[type="checkbox"], [aria-pressed], [aria-checked], [onclick], [tabindex], a';
+        let clickable = el.closest(clickableSel);
+        if (!clickable) {
+            const container = el.closest('li, div, section, header, footer, article, main, nav') || el.parentElement;
+            if (container) {
+                const within = container.querySelector(clickableSel);
+                if (within) clickable = within;
+            }
+            if (!clickable && el.parentElement) {
+                const sibling = el.parentElement.querySelector(clickableSel);
+                if (sibling) clickable = sibling;
+            }
+        }
+        return clickable || el;
+    }
+
+    function findVisibleElsWithText(text) {
+        const nodes = Array.from(document.querySelectorAll('div,button,a,span')).filter(e => e && e.offsetParent !== null);
+        return nodes.filter(el => ((el.textContent || '').trim().includes(text)));
+    }
+
+    function toggleDoubaoSwitchByLabel(label, desiredOn) {
+        if (SiteKey !== 'doubao') return false;
+        const preferLabs = Array.from(document.querySelectorAll('div.flex.items-center')).filter(e => e && e.offsetParent !== null && ((e.textContent || '').includes(label)));
+        const labels = preferLabs.length ? preferLabs : findVisibleElsWithText(label);
+        for (const labEl of labels) {
+            const container = labEl.closest('li, div, section, header, footer, article, main, nav') || labEl.parentElement;
+            if (!container) continue;
+            const switchEl = container.querySelector('button[role="switch"], [role="switch"], input[type="checkbox"], [aria-checked]');
+            if (switchEl) {
+                let state = null;
+                if (switchEl instanceof HTMLInputElement && switchEl.type === 'checkbox') state = !!switchEl.checked;
+                else if (switchEl.getAttribute) {
+                    const val = switchEl.getAttribute('aria-checked') || switchEl.getAttribute('aria-pressed') || switchEl.getAttribute('data-state');
+                    if (val != null) state = /^(true|on|checked|active)$/i.test(String(val));
+                }
+                if (state == null) state = buttonOnState(switchEl);
+                if ((desiredOn && !state) || (!desiredOn && state)) switchEl.click();
+                return true;
+            }
+            const clickable = findClickableNear(labEl);
+            if (clickable) {
+                const state = buttonOnState(clickable);
+                if ((desiredOn && !state) || (!desiredOn && state)) clickable.click();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    function doubaoClickNewChat(timeoutMs = 3000) {
+        return new Promise((resolve, reject) => {
+            if (SiteKey !== 'doubao') { reject(new Error('not doubao')); return; }
+            const start = Date.now();
+            const loop = () => {
+                const prefer = Array.from(document.querySelectorAll('div.text-14.font-semibold.leading-22.select-none.grow.flex-1')).filter(e => e && e.offsetParent !== null && ((e.textContent || '').includes('新对话')));
+                const labels = prefer.length ? prefer : findVisibleElsWithText('新对话');
+                if (labels.length) {
+                    const clickable = findClickableNear(labels[0]);
+                    clickable.click();
+                    resolve();
+                    return;
+                }
+                if (Date.now() - start >= timeoutMs) { reject(new Error('新对话未找到')); return; }
+                setTimeout(loop, 300);
+            };
+            loop();
+        });
+    }
+
+    function buttonOnState(el) {
+        if (!el) return null;
+        if (el instanceof HTMLInputElement && el.type === 'checkbox') return !!el.checked;
+        if (el.getAttribute && (el.getAttribute('aria-pressed') === 'true' || el.getAttribute('aria-checked') === 'true' || el.getAttribute('aria-selected') === 'true')) return true;
+        const ds = el.getAttribute && el.getAttribute('data-state');
+        if (ds && /^(on|true|checked|active)$/i.test(ds)) return true;
+        const cls = (el.className || '');
+        if (/\bselected\b|\bactive\b|\bon\b/.test(cls)) return true;
+        if (cls.includes('ds-toggle-button--selected')) return true;
+        return false;
+    }
+
+    function toggleButtonByTexts(candidates, desiredOn) {
+        const els = Array.from(document.querySelectorAll('button, [role="button"], [aria-pressed], [aria-checked], [onclick], [tabindex], a, div')).filter(e => e.offsetParent !== null);
+        const el = els.find(e => textIncludes(e, candidates));
+        if (!el) return;
+        const clickable = findClickableNear(el);
+        const state = buttonOnState(clickable);
+        if ((desiredOn && !state) || (!desiredOn && state)) clickable.click();
+    }
+
+    function getOutputNodes() {
+        if (SiteKey === 'deepseek') {
+            const ds = Array.from(document.querySelectorAll('div[class*="ds-markdown"]'));
+            if (ds.length) return ds;
+        }
+        const sels = [
+            '.markdown',
+            '.markdown-body',
+            'div[class*="markdown"]',
+            'div[class*="message-content"]',
+            'div[class*="chat-message"]',
+            'article',
+            'div[role="article"]'
+        ];
+        for (const sel of sels) {
+            const nodes = Array.from(document.querySelectorAll(sel));
+            if (nodes.length) return nodes;
+        }
+        return [];
+    }
+
+    function extractLatestOutputText() {
+        const nodes = getOutputNodes();
+        if (!nodes.length) return null;
+        const last = nodes[nodes.length - 1];
+        const txt = (last.innerText || last.textContent || '').trim();
+        return txt || null;
+    }
+
+    function waitForNewOutput(prevCount, timeoutMs = 60000) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            const baselineNodes = getOutputNodes();
+            const baselineLastLen = baselineNodes.length ? ((baselineNodes[baselineNodes.length - 1].innerText || '').length) : 0;
+            const loop = () => {
+                const nodes = getOutputNodes();
+                const lastLenNow = nodes.length ? ((nodes[nodes.length - 1].innerText || '').length) : 0;
+                if (nodes.length > prevCount || lastLenNow > baselineLastLen) {
+                    let lastLen = lastLenNow;
+                    const idleCheck = () => {
+                        const curNodes = getOutputNodes();
+                        const curTextLen = ((curNodes[curNodes.length - 1] || {}).innerText || '').length;
+                        if (curTextLen === lastLen) { resolve(); }
+                        else { lastLen = curTextLen; setTimeout(idleCheck, 1000); }
+                    };
+                    setTimeout(idleCheck, 1500);
+                    return;
+                }
+                if (Date.now() - start > timeoutMs) { reject(new Error('Response timeout')); return; }
+                setTimeout(loop, 800);
+            };
+            loop();
+        });
+    }
+
+    function clickOpenByTexts(texts, timeoutMs = 5000) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            const tryClick = () => {
+                const els = Array.from(document.querySelectorAll('button, a, [role="button"], span, div, [onclick], [tabindex]')).filter(e => e.offsetParent !== null);
+                const target = els.find(el => texts.some(t => (el.textContent || '').trim().includes(t)));
+                if (target) {
+                    const clickable = findClickableNear(target);
+                    clickable.click();
+                    resolve();
+                    return;
+                }
+                if (Date.now() - start >= timeoutMs) { reject(new Error('“开启新对话”元素未找到')); return; }
+                setTimeout(tryClick, 300);
+            };
+            tryClick();
+        });
+    }
+
     function updateLoginUI(isLoggedIn, statusText = '') {
         loginStatusEl.textContent = statusText || (isLoggedIn ? 'Logged In' : 'Not Logged In');
         loginButtonEl.textContent = isLoggedIn ? 'Logout' : 'Login';
     }
 
     function activateNetButton() {
-        const netButtonEl = Array.from(document.querySelectorAll('button, [role="button"]'))
-            .find(el => el.textContent?.replace(/\s+/g, '').includes('联网搜索'));
-        const activated = netButtonEl.classList.contains('ds-toggle-button--selected');
-        if (!activated) {
-            netButtonEl.click();
-        }
+        toggleButtonByTexts(['联网搜索', '联网', 'Web', 'Search'], true);
     }
 
     function deactivateDeepThoughtButton() {
-        const deepThoughtButtonEl = Array.from(document.querySelectorAll('button, [role="button"]'))
-            .find(el => el.textContent?.replace(/\s+/g, '').includes('深度思考'));
-        const activated = deepThoughtButtonEl.classList.contains('ds-toggle-button--selected');
-        if (activated) {
-            deepThoughtButtonEl.click();
+        if (SiteKey === 'doubao') {
+            if (toggleDoubaoSwitchByLabel('深度思考', false)) return;
         }
+        toggleButtonByTexts(['深度思考', '思考', 'Deep', 'Thinking', '推理'], false);
     }
 
 
@@ -499,8 +738,7 @@
                             console.log(`[Tampermonkey] 📝 You have ${tasks.length} pending tasks.`);
                             confirmAction(`You have ${tasks.length} pending tasks. Do you want to process them now?`).then(confirmed => {
                                 if (confirmed) {
-                                    const textareaElement = document.querySelector('textarea[class*="ds-scroll-area"][class*="d96f2d2a"]');
-                                    processPromptsFlow(textareaElement, tasks);
+                                    processPromptsFlow(null, tasks);
                                 }
                             });
                         }
@@ -556,25 +794,6 @@
         else { window.open(LOGIN_URL, '_blank'); }
     });
 
-    function executePromptOnPage() {
-        const currentUrl = window.current_url_for_testing || window.location.href;
-        if (!currentUrl.startsWith('https://chat.deepseek.com')) return;
-        const sendBtn = document.querySelector('div[role="button"][aria-disabled="false"][class*="_7436101"]');
-        if (sendBtn) {
-            sendBtn.click();
-            // 等待发送按钮变为不可用，表示发送完成
-            const checkInterval = setInterval(() => {
-                const disabledBtn = document.querySelector('div[role="button"][aria-disabled="true"][class*="_7436101"]');
-                if (disabledBtn) {
-                    clearInterval(checkInterval);
-                    // 发送完成后的操作
-                    showPluginAlert('Prompt executed successfully.');
-                }
-            }, 500);
-        } else {
-            console.warn('[Tampermonkey] ❌ 未找到发送按钮');
-        }
-    }
 
     /**
      * 执行页面上的 Prompt，并返回一个 Promise。
@@ -584,57 +803,27 @@
     function executePromptOnPagePromise() {
         return new Promise((resolve, reject) => {
             const currentUrl = window.current_url_for_testing || window.location.href;
-            if (!currentUrl.startsWith('https://chat.deepseek.com')) {
-                // 可以在此处选择 reject 或直接返回一个已解决的 Promise，
-                // 但如果用户期望在正确的页面才执行操作，reject 更合理。
+            if (!(currentUrl.startsWith('https://chat.deepseek.com') || currentUrl.startsWith('https://www.doubao.com'))) {
                 console.warn('[Tampermonkey] ❌ URL 不匹配，操作终止。');
-                // return resolve(); // 如果不匹配也视为完成，可以 uncomment 这一行
-                return reject(new Error('URL does not match https://chat.deepseek.com'));
+                return reject(new Error('Unsupported site'));
             }
-            // 查找可用的发送按钮
-            const sendBtn = document.querySelector('div[role="button"][aria-disabled="false"][class*="_7436101"]');
-            if (sendBtn) {
-                sendBtn.click(); // 点击发送按钮
-                // 等待发送按钮变为不可用，表示发送完成
-                const checkInterval = setInterval(() => {
-                    // 查找不可用的发送按钮
-                    const disabledBtn = document.querySelector('div[role="button"][aria-disabled="true"][class*="_7436101"]');
-                    if (disabledBtn) {
-                        clearInterval(checkInterval); // 停止检查
-                        // 发送完成，解决 Promise
-                        resolve();
-                    }
-                }, 6000);
-            } else {
+            const prev = getOutputNodes().length;
+            const ok = sendPrompt();
+            if (!ok) {
                 console.warn('[Tampermonkey] ❌ 未找到发送按钮');
-                // 找不到发送按钮，拒绝 Promise
                 reject(new Error('Send button not found'));
+                return;
             }
+            waitForNewOutput(prev, 60000).then(() => resolve()).catch(err => reject(err));
         });
     }
 
     function clickOpenNewConversation(timeoutMs = 5000) {
-        return new Promise((resolve, reject) => {
-            const start = Date.now();
-            const tryClick = () => {
-                const span = Array.from(document.querySelectorAll('span'))
-                    .find(el => el.textContent && el.textContent.trim() === '开启新对话');
-                if (span) {
-                    const clickable = span.closest('button, a, [role="button"], [onclick], [tabindex]') || span;
-                    clickable.click();
-                    console.log('[Tampermonkey] ✅ 已点击 “开启新对话”。');
-                    resolve();
-                    return;
-                }
-                if (Date.now() - start >= timeoutMs) {
-                    console.warn('[Tampermonkey] ❌ 未在超时前找到 “开启新对话”。');
-                    reject(new Error('“开启新对话”元素未找到'));
-                    return;
-                }
-                setTimeout(tryClick, 300);
-            };
-            tryClick();
-        });
+        const cands = ['开启新对话', '新对话', '新建对话', '新建会话', '新聊天', '开始新对话', 'New chat', 'New conversation', 'New Chat'];
+        if (SiteKey === 'doubao') {
+            return doubaoClickNewChat(Math.min(timeoutMs, 3000)).catch(() => clickOpenByTexts(cands, timeoutMs));
+        }
+        return clickOpenByTexts(cands, timeoutMs);
     }
 
     startButtonEl.addEventListener('click', () => {
@@ -658,8 +847,7 @@
                     const prompts = normalizeTasksFromAny(raw);
                     // console.log('[Tampermonkey] 📥 Received response:', data);
                     if (prompts && prompts.length > 0) {
-                        const textareaElement = document.querySelector('textarea[class*="ds-scroll-area"][class*="d96f2d2a"]');
-                        processPromptsFlow(textareaElement, prompts);
+                        processPromptsFlow(null, prompts);
                     } else {
                         showPluginAlert('No prompts were returned.');
                         updateStartButtonUI(false);
@@ -707,11 +895,16 @@
                 console.log(`[Tampermonkey] ⏳ Processing prompt: "${prompt.substring(0, 10)}..."`);
 
                 // 1. 点击开启新对话
-                await clickOpenNewConversation();
-                console.log(`[Tampermonkey] ✅ New conversation opened successfully.`);
+                try {
+                    await clickOpenNewConversation();
+                    console.log(`[Tampermonkey] ✅ New conversation opened successfully.`);
+                } catch (e) {
+                    console.log('[Tampermonkey] ⚠️ 未找到“新对话”入口，继续在当前对话执行。');
+                }
 
                 // 2. 模拟输入/粘贴 prompt
-                await simulateInputAtCursor(textareaElement, prompt);
+                const editableEl = findEditableInput();
+                await simulateInputAtCursor(editableEl || textareaElement, prompt);
                 console.log(`[Tampermonkey] ✅ Prompt pasted successfully.`);
 
                 // 3. 执行 prompt
@@ -748,17 +941,14 @@
                 return reject('Not logged in');
             }
             // const thinkingContents = document.querySelectorAll('div[class*="ds-think-content"]');
-            const outputContents = document.querySelectorAll('div[class*="ds-markdown"]');
-            if (outputContents.length === 0) {
+            const outputText = extractLatestOutputText();
+            if (!outputText) {
                 console.warn('[Tampermonkey] ❌ 未找到蒸馏内容区域');
-                showPluginAlert('未找到推理过程，请打开【深度思考】后再试。');
-                reject('Thinking content area not found');
+                showPluginAlert('未找到输出内容。');
+                reject('Output content area not found');
                 return;
             }
-            // const thinkingContent = thinkingContents[thinkingContents.length - 1];
-            // const thinkingData = thinkingContent.innerText;
-            const outputContent = outputContents[outputContents.length - 1];
-            const outputData = outputContent.innerText;
+            const outputData = outputText;
             const payload = {
                 sub_task_id: subTaskId,
                 subTaskId: subTaskId,
@@ -804,64 +994,75 @@
             const checkInterval = 500; // 检查间隔（毫秒）
             let attempts = 0;
             const interval = setInterval(() => {
-                if (activeElement && (
-                    activeElement instanceof HTMLInputElement ||
-                    activeElement instanceof HTMLTextAreaElement ||
-                    (activeElement.isContentEditable && activeElement.contentEditable === 'true')
-                )) {
+                let targetEl = activeElement;
+                if (!isEditableEl(targetEl)) {
+                    targetEl = findEditableInput();
+                }
+                if (isEditableEl(targetEl)) {
                     clearInterval(interval);
-                    activeElement.focus();
+                    targetEl.focus();
+
+                    let done = false;
 
                     // 方式一：尝试使用 document.execCommand 插入文本
-                    if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
+                    if (!done && document.queryCommandSupported && document.queryCommandSupported('insertText')) {
                         try {
                             document.execCommand('insertText', false, message);
                             console.log('[Tampermonkey] 粘贴成功（方式一）');
-                            resolve();
-                        } catch (e) {
-                            // console.warn('方式一失败，尝试其他方法');
-                            reject(e);
-                        }
+                            done = true;
+                        } catch (_) { /* ignore and try next */ }
                     }
 
                     // 方式二：如果 execCommand 失败，尝试直接设置值
-                    else if (activeElement.setSelectionRange) {
-                        const start = activeElement.selectionStart;
-                        const end = activeElement.selectionEnd;
-                        activeElement.value = activeElement.value.substring(0, start) + message + activeElement.value.substring(end);
-                        activeElement.setSelectionRange(start + message.length, start + message.length);
-                        console.log('[Tampermonkey] 粘贴成功（方式二）');
-                        resolve();
+                    if (!done && typeof targetEl.setSelectionRange === 'function') {
+                        try {
+                            const start = targetEl.selectionStart ?? targetEl.value.length ?? 0;
+                            const end = targetEl.selectionEnd ?? start;
+                            targetEl.value = String(targetEl.value || '').substring(0, start) + message + String(targetEl.value || '').substring(end);
+                            try { targetEl.setSelectionRange(start + message.length, start + message.length); } catch (_) {}
+                            try { targetEl.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+                            try { targetEl.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+                            console.log('[Tampermonkey] 粘贴成功（方式二）');
+                            done = true;
+                        } catch (_) { /* ignore and try next */ }
                     }
 
                     // 方式三：如果是 contenteditable 元素
-                    else if (activeElement.isContentEditable) {
-                        const selection = window.getSelection();
-                        if (selection.rangeCount > 0) {
-                            const range = selection.getRangeAt(0);
-                            range.deleteContents();
-                            const textNode = document.createTextNode(message);
-                            range.insertNode(textNode);
-                            range.setEndAfter(textNode);
-                            range.collapse(false);
-                            selection.removeAllRanges();
-                            selection.addRange(range);
-                            console.log('[Tampermonkey] 粘贴成功（方式三）');
-                            resolve();
-                        }
+                    if (!done && targetEl.isContentEditable) {
+                        try {
+                            const selection = window.getSelection();
+                            if (selection && selection.rangeCount > 0) {
+                                const range = selection.getRangeAt(0);
+                                range.deleteContents();
+                                const textNode = document.createTextNode(message);
+                                range.insertNode(textNode);
+                                range.setEndAfter(textNode);
+                                range.collapse(false);
+                                selection.removeAllRanges();
+                                selection.addRange(range);
+                                try { targetEl.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+                                console.log('[Tampermonkey] 粘贴成功（方式三）');
+                                done = true;
+                            }
+                        } catch (_) { /* ignore and try next */ }
                     }
 
-                    else {
-                        // 方式四：如果 setSelectionRange 和 contenteditable 也不支持，尝试模拟按键事件
-                        for (let i = 0; i < message.length; i++) {
-                            const keyEvent = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: message[i] });
-                            activeElement.dispatchEvent(keyEvent);
-                            const inputEvent = new InputEvent('input', { bubbles: true, cancelable: true, data: message[i] });
-                            activeElement.dispatchEvent(inputEvent);
-                        }
-                        console.log('[Tampermonkey] 粘贴成功（方式四）');
-                        resolve();
+                    // 方式四：如果 setSelectionRange 和 contenteditable 也不支持，尝试模拟按键事件
+                    if (!done) {
+                        try {
+                            for (let i = 0; i < message.length; i++) {
+                                const keyEvent = new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: message[i] });
+                                targetEl.dispatchEvent(keyEvent);
+                                const inputEvent = new InputEvent('input', { bubbles: true, cancelable: true, data: message[i] });
+                                targetEl.dispatchEvent(inputEvent);
+                            }
+                            console.log('[Tampermonkey] 粘贴成功（方式四）');
+                            done = true;
+                        } catch (_) { /* ignore */ }
                     }
+
+                    if (done) return resolve();
+                    return reject(new Error('Failed to inject text'));
                 } else {
                     // 如果还没有超过最大等待时间，继续检查
                     attempts++;
