@@ -293,7 +293,7 @@
     const loginButtonEl = document.getElementById('fission-login-button');
     const startButtonEl = document.getElementById('fission-start-button');
     const promptInputEl = document.getElementById('fission-prompt-input');
-    
+
 
     const SiteKey = (() => {
         const u = window.current_url_for_testing || window.location.href;
@@ -370,12 +370,12 @@
 
 
     function textIncludes(el, arr) {
-    const txt = ((el && (el.textContent || el.getAttribute('aria-label'))) || '').replace(/\s+/g, '');
-    return arr.some(k => {
-        const standardizedKey = k.replace(/\s+/g, '');
-        return txt === standardizedKey;
-    });
-}
+        const txt = ((el && (el.textContent || el.getAttribute('aria-label'))) || '').replace(/\s+/g, '');
+        return arr.some(k => {
+            const standardizedKey = k.replace(/\s+/g, '');
+            return txt === standardizedKey;
+        });
+    }
 
     function findClickableNear(el) {
         if (!el) return null;
@@ -402,29 +402,13 @@
 
     function toggleDoubaoSwitchByLabel(label, desiredOn) {
         if (SiteKey !== 'doubao') return false;
-        const preferLabs = Array.from(document.querySelectorAll('div.flex.items-center')).filter(e => e && e.offsetParent !== null && ((e.textContent || '').includes(label)));
-        const labels = preferLabs.length ? preferLabs : findVisibleElsWithText(label);
-        for (const labEl of labels) {
-            const container = labEl.closest('li, div, section, header, footer, article, main, nav') || labEl.parentElement;
-            if (!container) continue;
-            const switchEl = container.querySelector('button[role="switch"], [role="switch"], input[type="checkbox"], [aria-checked]');
-            if (switchEl) {
-                let state = null;
-                if (switchEl instanceof HTMLInputElement && switchEl.type === 'checkbox') state = !!switchEl.checked;
-                else if (switchEl.getAttribute) {
-                    const val = switchEl.getAttribute('aria-checked') || switchEl.getAttribute('aria-pressed') || switchEl.getAttribute('data-state');
-                    if (val != null) state = /^(true|on|checked|active)$/i.test(String(val));
-                }
-                if (state == null) state = buttonOnState(switchEl);
-                if ((desiredOn && !state) || (!desiredOn && state)) switchEl.click();
-                return true;
-            }
-            const clickable = findClickableNear(labEl);
-            if (clickable) {
-                const state = buttonOnState(clickable);
-                if ((desiredOn && !state) || (!desiredOn && state)) clickable.click();
-                return true;
-            }
+        const btns = Array.from(document.querySelectorAll('button, [role="button"], [role="switch"], input[type="checkbox"], [aria-checked], [aria-pressed], [onclick], [tabindex], a')).filter(e => e.offsetParent !== null);
+        const targetButton = Array.from(btns).find(button => {
+            return button.textContent && button.textContent.trim() === "深度思考";
+        });
+        if (targetButton && targetButton.getAttribute('data-checked') === 'true' && !desiredOn) {
+            targetButton.click();
+            return true;
         }
         return false;
     }
@@ -1021,9 +1005,9 @@
                             const start = targetEl.selectionStart ?? targetEl.value.length ?? 0;
                             const end = targetEl.selectionEnd ?? start;
                             targetEl.value = String(targetEl.value || '').substring(0, start) + message + String(targetEl.value || '').substring(end);
-                            try { targetEl.setSelectionRange(start + message.length, start + message.length); } catch (_) {}
-                            try { targetEl.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
-                            try { targetEl.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) {}
+                            try { targetEl.setSelectionRange(start + message.length, start + message.length); } catch (_) { }
+                            try { targetEl.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) { }
+                            try { targetEl.dispatchEvent(new Event('change', { bubbles: true })); } catch (_) { }
                             console.log('[Tampermonkey] 粘贴成功（方式二）');
                             done = true;
                         } catch (_) { /* ignore and try next */ }
@@ -1042,7 +1026,7 @@
                                 range.collapse(false);
                                 selection.removeAllRanges();
                                 selection.addRange(range);
-                                try { targetEl.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) {}
+                                try { targetEl.dispatchEvent(new Event('input', { bubbles: true })); } catch (_) { }
                                 console.log('[Tampermonkey] 粘贴成功（方式三）');
                                 done = true;
                             }
