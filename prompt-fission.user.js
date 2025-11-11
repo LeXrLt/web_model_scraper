@@ -368,10 +368,14 @@
         return false;
     }
 
+
     function textIncludes(el, arr) {
-        const txt = ((el && (el.textContent || el.getAttribute('aria-label'))) || '').replace(/\s+/g, '');
-        return arr.some(k => txt.includes(k.replace(/\s+/g, '')));
-    }
+    const txt = ((el && (el.textContent || el.getAttribute('aria-label'))) || '').replace(/\s+/g, '');
+    return arr.some(k => {
+        const standardizedKey = k.replace(/\s+/g, '');
+        return txt === standardizedKey;
+    });
+}
 
     function findClickableNear(el) {
         if (!el) return null;
@@ -461,9 +465,8 @@
         const els = Array.from(document.querySelectorAll('button, [role="button"], [aria-pressed], [aria-checked], [onclick], [tabindex], a, div')).filter(e => e.offsetParent !== null);
         const el = els.find(e => textIncludes(e, candidates));
         if (!el) return;
-        const clickable = findClickableNear(el);
-        const state = buttonOnState(clickable);
-        if ((desiredOn && !state) || (!desiredOn && state)) clickable.click();
+        const state = buttonOnState(el);
+        if ((desiredOn && !state) || (!desiredOn && state)) el.click();
     }
 
     function getOutputNodes() {
@@ -526,10 +529,9 @@
             const start = Date.now();
             const tryClick = () => {
                 const els = Array.from(document.querySelectorAll('button, a, [role="button"], span, div, [onclick], [tabindex]')).filter(e => e.offsetParent !== null);
-                const target = els.find(el => texts.some(t => (el.textContent || '').trim().includes(t)));
+                const target = els.find(el => texts.some(t => (el.textContent || '').trim() === t));
                 if (target) {
-                    const clickable = findClickableNear(target);
-                    clickable.click();
+                    target.click();
                     resolve();
                     return;
                 }
